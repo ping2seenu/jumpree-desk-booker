@@ -1,129 +1,103 @@
+import time
 from selenium import webdriver
-from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
-from datetime import datetime, timedelta
-import os
-import time
 
-# ---- CONFIG ----
-URL = "https://juliusbaer.smartenspaces.com"
-USERNAME = os.getenv("JUMPREE_USER")
-PASSWORD = os.getenv("JUMPREE_PASS")
-DESK_NUMBER = os.getenv("DESK_NUMBER", "177")
-FLOOR_DEFAULT = os.getenv("FLOOR", "6")
-TIME_SLOT_DEFAULT = "09:00-18:00"  # defaulted in portal
+# --- CONFIGURATION ---
+URL = "https://juliusbaer.smartenspaces.com/spacemanagementV2/#/"
+EMAIL = "srinivasareddy.kumbagiri@juliusbaer.com"
+PASSWORD = "Forgot@123"
+FLOOR = "Level 06"
+DESK_ID = "177"
+START_TIME = "09:00 AM"
+END_TIME = "06:00 PM"
 
-# ---- TOMORROW'S DATE ----
-tomorrow = datetime.today() + timedelta(days=4)
-BOOK_DATE = tomorrow.strftime("%d %b %Y")
-print("Booking Details:")
-print("Date:", BOOK_DATE)
-print("Desk:", DESK_NUMBER)
-print("Floor:", FLOOR_DEFAULT)
-print("Time:", TIME_SLOT_DEFAULT)
+def run_booking():
+    # Setup Chrome
+    options = Options()
+    # options.add_argument("--headless") # Uncomment to run without opening a window
+    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+    wait = WebDriverWait(driver, 20)
 
-# ---- CHROME OPTIONS ----
-options = webdriver.ChromeOptions()
-options.add_argument("--headless=new")  # works in GitHub Actions
-options.add_argument("--no-sandbox")
-options.add_argument("--disable-dev-shm-usage")
-options.add_argument("--disable-gpu")
-options.add_argument("--window-size=1920,1080")
+    try:
+        driver.get(URL)
+        driver.maximize_window()
 
-driver = webdriver.Chrome(
-    service=Service(ChromeDriverManager().install()),
-    options=options
-)
-wait = WebDriverWait(driver, 30)
+        # 1. LOGIN PHASE
+        print("Logging in...")
+        email_input = wait.until(EC.presence_of_element_located((By.TAG_NAME, "input")))
+        email_input.send_keys(EMAIL)
+        driver.find_element(By.XPATH, "//button[contains(text(), 'Proceed')]").click()
 
-# ---- OPEN PORTAL ----
-driver.get(URL)
-time.sleep(5)  # wait for portal to fully load
+        pass_input = wait.until(EC.presence_of_element_located((By.XPATH, "//input[@type='password']")))
+        pass_input.send_keys(PASSWORD)
+        
+        # Click I agree checkbox
+        driver.find_element(By.XPATH, "//span[contains(text(), 'I agree')]").click()
+        driver.find_element(By.XPATH, "//button[contains(text(), 'Login')]").click()
 
-# ---- LOGIN ----
-try:
-    # Try common username input locators
-    username_input = wait.until(
-        EC.presence_of_element_located((
-            By.XPATH, "//input[@type='text' or @name='username' or contains(@placeholder,'Username')]"
-        ))
-    )
-    username_input.send_keys(USERNAME)
+        # 2. NAVIGATE TO BOOKING
+        print("Navigating to Desk Booking...")
+        booking_sidebar = wait.until(EC.element_to_be_clickable((By.XPATH, "//span[text()='Booking']")))
+        booking_sidebar.click()
+        
+        book_now_btn = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Book Now')]")))
+        book_now_btn.click()
 
-    password_input = driver.find_element(
-        By.XPATH, "//input[@type='password' or @name='password' or contains(@placeholder,'Password')]"
-    )
-    password_input.send_keys(PASSWORD)
+        # 3. SELECT FLOOR & TIME
+        print(f"Selecting {FLOOR} and time...")
+        # Select Floor (Level 06)
+        floor_dropdown = wait.until(EC.element_to_be_clickable((By.XPATH, "//div[contains(@class, 'location-select')]")))
+        floor_dropdown.click()
+        wait.until(EC.element_to_be_clickable((By.XPATH, f"//span[text()='{FLOOR}']"))).click()
 
-    # Click login button
-    login_btn = driver.find_element(
-        By.XPATH, "//button[contains(.,'Login') or contains(.,'Sign in')]"
-    )
-    login_btn.click()
-except Exception as e:
-    print("❌ Login failed:", e)
-    driver.save_screenshot("login_error.png")
-    driver.quit()
-    exit(1)
+        # Select Times
+        # Note: These are usually custom dropdowns. This clicks the dropdown and selects the time text.
+        start_dropdown = driver.find_elements(By.XPATH, "//div[contains(@class, 'mat-select-arrow-wrapper')]")[0]
+        start_dropdown.click()
+        wait.until(EC.element_to_be_clickable((By.XPATH, f"//span[contains(text(), '{START_TIME}')]"))).click()
+        
+        end_dropdown = driver.find_elements(By.XPATH, "//div[contains(@class, 'mat-select-arrow-wrapper')]")[1]
+        end_dropdown.click()
+        wait.until(EC.element_to_be_clickable((By.XPATH, f"//span[contains(text(), '{END_TIME}')]"))).click()
 
-# ---- OPEN BOOKING PAGE ----
-try:
-    book_btn = wait.until(
-        EC.element_to_be_clickable((By.XPATH, "//button[contains(.,'Book')]"))
-    )
-    book_btn.click()
-except Exception as e:
-    print("❌ Could not open booking page:", e)
-    driver.save_screenshot("booking_page_error.png")
-    driver.quit()
-    exit(1)
+        # 4. CALENDAR DATE SELECTION (Selects Tomorrow by default)
+        # To do 'Daily', you'd loop through available dates here
+        print("Selecting date...")
+        calendar_icon = driver.find_element(By.XPATH, "//mat-icon[text()='calendar_today']")
+        calendar_icon.click()
+        
+        # This part depends on the calendar structure. 
+        # Clicking the first available 'green' (available) date:
+        available_date = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, ".available-date-class"))) 
+        available_date.click()
+        driver.find_element(By.XPATH, "//button[text()='Next']").click()
 
-# ---- SELECT DATE ----
-try:
-    date_elem = wait.until(
-        EC.element_to_be_clickable((By.XPATH, f"//span[text()='{BOOK_DATE}']"))
-    )
-    date_elem.click()
-except Exception as e:
-    print("❌ Could not select date:", e)
-    driver.save_screenshot("date_error.png")
-    driver.quit()
-    exit(1)
+        # 5. DESK SELECTION (The crucial part)
+        print(f"Finding Desk {DESK_ID}...")
+        # Toggle to List View (The icon with dots and lines)
+        list_view_btn = wait.until(EC.element_to_be_clickable((By.XPATH, "//mat-icon[text()='list']")))
+        list_view_btn.click()
 
-# ---- FLOOR AND TIME ----
-# Skip, defaulted in portal
+        # Find Desk 177 in the list
+        desk_item = wait.until(EC.element_to_be_clickable((By.XPATH, f"//*[contains(text(), '{DESK_ID}')]")))
+        desk_item.click()
 
-# ---- SELECT DESK ----
-try:
-    desk_elem = wait.until(
-        EC.element_to_be_clickable((By.XPATH, f"//span[contains(.,'{DESK_NUMBER}')]"))
-    )
-    desk_elem.click()
-except Exception as e:
-    print("❌ Could not select desk:", e)
-    driver.save_screenshot("desk_error.png")
-    driver.quit()
-    exit(1)
+        # 6. CONFIRMATION
+        confirm_btn = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Confirm')]")))
+        confirm_btn.click()
+        
+        print("Booking Successful!")
+        time.sleep(5)
 
-# ---- NEXT AND BOOK NOW ----
-try:
-    next_btn = wait.until(
-        EC.element_to_be_clickable((By.XPATH, "//button[contains(.,'Next')]"))
-    )
-    next_btn.click()
+    except Exception as e:
+        print(f"An error occurred: {e}")
+    finally:
+        driver.quit()
 
-    book_now_btn = wait.until(
-        EC.element_to_be_clickable((By.XPATH, "//button[contains(.,'Book Now')]"))
-    )
-    book_now_btn.click()
-except Exception as e:
-    print("❌ Could not finalize booking:", e)
-    driver.save_screenshot("book_now_error.png")
-    driver.quit()
-    exit(1)
-
-print("✅ Desk booked successfully!")
-driver.quit()
+if __name__ == "__main__":
+    run_booking()
