@@ -12,8 +12,8 @@ import sys
 
 # ================= CONFIGURATION =================
 # Get credentials from environment variables (safer) or hardcode
-EMAIL = os.getenv('JUMPREE_EMAIL', 'your.email@domain.com')  # Set in GitHub Secrets
-PASSWORD = os.getenv('JUMPREE_PASSWORD', 'your_password_here')  # Set in GitHub Secrets
+EMAIL = os.getenv('JUMPREE_EMAIL', 'srinivasareddy.kumbagiri@juliusbaer.com')  # Set in GitHub Secrets
+PASSWORD = os.getenv('JUMPREE_PASSWORD', 'Forgot@123')  # Set in GitHub Secrets
 BUILDING = "ONE@CHANGI CITY"
 LEVEL = "06"
 DAYS_AHEAD = 1
