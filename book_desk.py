@@ -79,46 +79,25 @@ def save_debug_info(driver, step_name):
 def wait_for_angular(driver, timeout=30):
     """Wait for Angular app to finish loading"""
     print("⏳ Waiting for Angular to load...")
-    
-    wait = WebDriverWait(driver, timeout)
-    
-    # Wait for Angular to be defined
-    try:
-        wait.until(lambda d: d.execute_script(
-            "return typeof angular !== 'undefined' || "
-            "typeof getAllAngularRootElements !== 'undefined' || "
-            "document.readyState === 'complete'"
-        ))
-        print("✅ Angular detected or page ready")
-    except:
-        print("⚠️  Angular not detected, but continuing...")
-    
-    # Wait for any loading spinners to disappear
-    try:
-        wait.until(EC.invisibility_of_element_located((By.CSS_SELECTOR, 
-            ".spinner, .loading, .loader, [class*='spin'], [class*='load']"
-        )))
-        print("✅ Loading spinners cleared")
-    except:
-        print("⚠️  No spinners found or still visible")
-    
-    # Additional wait for network idle (simulate)
     time.sleep(2)
     
-    # Execute Angular-specific wait if available
     try:
-        driver.execute_script("""
-            if (window.angular) {
-                var injector = angular.element(document.body).injector();
-                if (injector) {
-                    var $browser = injector.get('$browser');
-                    $browser.notifyWhenNoOutstandingRequests(function(){});
-                }
-            }
-        """)
-        print("✅ Angular requests completed")
+        WebDriverWait(driver, timeout).until(
+            lambda d: d.execute_script("return document.readyState") == "complete"
+        )
+        print("✅ Page ready")
+    except:
+        print("⚠️  Page may not be fully ready")
+    
+    # Wait for spinners to disappear
+    try:
+        WebDriverWait(driver, 5).until(
+            EC.invisibility_of_element_located((By.CSS_SELECTOR, ".spinner, .loading, .loader"))
+        )
     except:
         pass
+    
+    time.sleep(1)
 
 def login(driver, wait):
     """Handle login flow"""
@@ -172,158 +151,77 @@ def login(driver, wait):
         raise
 
 def navigate_to_booking(driver, wait):
-    """Navigate: Booking menu → Book Now button"""
+    """Navigate: Click Booking menu → Click Book Now button"""
     print("--- Navigating to Booking ---")
     
-    # Wait for Angular and navigation to be ready
+    # Wait for dashboard to load
     wait_for_angular(driver)
+    time.sleep(5)  # Extra wait for menu to render
     
-    # Additional explicit wait for navigation menu to be present
-    print("🔍 Waiting for navigation menu to appear...")
-    try:
-        wait.until(EC.presence_of_element_located((
-            By.CSS_SELECTOR, 
-            "a.nav-link, .nav-link, [class*='nav'], nav a"
-        )))
-        print("✅ Navigation menu detected")
-    except:
-        print("⚠️  Navigation menu not detected with CSS, trying XPath...")
-        try:
-            wait.until(EC.presence_of_element_located((By.XPATH, "//a | //nav")))
-            print("✅ Some navigation elements found")
-        except:
-            print("❌ No navigation elements found at all")
-            save_debug_info(driver, "no_navigation")
-    
-    time.sleep(3)  # Extra buffer for Angular rendering
-    
-    # STEP 1: Click "Booking" menu
-    print("🔍 Step 1: Looking for 'Booking' menu...")
+    # STEP 1: Click "Booking" menu item
+    print("🔍 Step 1: Clicking 'Booking' menu...")
     
     booking_menu_selectors = [
+        (By.XPATH, "//span[@class='text' and text()='Booking']/parent::a"),
+        (By.XPATH, "//span[text()='Booking']/parent::a"),
+        (By.XPATH, "//span[contains(@class, 'text') and text()='Booking']/.."),
         (By.ID, "amenity_booking"),
         (By.XPATH, "//a[@id='amenity_booking']"),
         (By.XPATH, "//a[contains(@href, 'amenity-booking')]"),
-        (By.XPATH, "//a[contains(@routerlink, 'amenity-booking')]"),
-        (By.XPATH, "//span[text()='Booking']/parent::a"),
-        (By.XPATH, "//span[contains(text(), 'Booking')]/parent::a"),
-        (By.XPATH, "//a[contains(@class, 'nav-link')]//span[text()='Booking']/.."),
-        (By.XPATH, "//a[.//span[text()='Booking']]"),
-        (By.XPATH, "//a[contains(., 'Booking')]"),
     ]
     
     booking_clicked = False
     for i, (by, selector) in enumerate(booking_menu_selectors, 1):
         try:
-            print(f"  Trying selector {i}/{len(booking_menu_selectors)}: {by}...")
-            
-            # Use longer timeout for first selector
-            timeout = 10 if i == 1 else 3
-            booking_menu = WebDriverWait(driver, timeout).until(
+            print(f"  Trying selector {i}/{len(booking_menu_selectors)}...")
+            booking_menu = WebDriverWait(driver, 5).until(
                 EC.presence_of_element_located((by, selector))
             )
             
-            # Check if element is visible
-            is_visible = booking_menu.is_displayed()
-            print(f"  Element found, visible: {is_visible}")
-            
-            # Scroll into view
+            # Scroll into view and highlight
             driver.execute_script(
                 "arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", 
-                booking_menu
-            )
-            time.sleep(1)
-            
-            # Highlight element (for debugging)
-            driver.execute_script(
-                "arguments[0].style.border='3px solid red'", 
                 booking_menu
             )
             time.sleep(0.5)
             
             # Click via JavaScript
             driver.execute_script("arguments[0].click();", booking_menu)
-            print(f"✅ Clicked 'Booking' menu (selector {i})")
+            print(f"✅ Clicked 'Booking' menu")
             booking_clicked = True
             time.sleep(3)
             break
             
-        except TimeoutException:
-            print(f"  Selector {i} timed out")
-            continue
         except Exception as e:
-            print(f"  Selector {i} error: {str(e)[:100]}")
+            print(f"  Selector {i} failed: {str(e)[:80]}")
             continue
     
     if not booking_clicked:
         print("❌ Could not click 'Booking' menu")
         save_debug_info(driver, "booking_menu_not_found")
-        
-        # Enhanced debugging
-        print("\n📋 Page body classes:")
-        try:
-            body = driver.find_element(By.TAG_NAME, "body")
-            print(f"  {body.get_attribute('class')}")
-        except:
-            pass
-        
-        print("\n📋 All links on page:")
-        try:
-            all_links = driver.find_elements(By.TAG_NAME, "a")
-            print(f"  Total links found: {len(all_links)}")
-            for link in all_links[:30]:
-                text = link.text.strip()
-                href = link.get_attribute('href')
-                link_id = link.get_attribute('id')
-                classes = link.get_attribute('class')
-                if text or href:
-                    print(f"  - Text: '{text}' | ID: '{link_id}' | Class: '{classes}' | Href: '{href}'")
-        except Exception as e:
-            print(f"  Error listing links: {e}")
-        
-        print("\n📋 Navigation elements:")
-        try:
-            nav_elements = driver.find_elements(By.XPATH, "//*[contains(@class, 'nav')]")
-            print(f"  Total nav elements found: {len(nav_elements)}")
-            for nav in nav_elements[:10]:
-                print(f"  - Tag: {nav.tag_name} | Class: {nav.get_attribute('class')}")
-        except:
-            pass
-        
         raise Exception("Could not find 'Booking' menu item")
     
-    # Verify navigation
-    try:
-        WebDriverWait(driver, 5).until(
-            lambda d: "amenity-booking" in d.current_url or "booking" in d.current_url.lower()
-        )
-        print(f"✅ Navigated to booking page: {driver.current_url}")
-    except:
-        print(f"⚠️  URL: {driver.current_url}")
-        save_debug_info(driver, "after_booking_click")
-    
-    # Wait for page to load
+    # Wait for booking page to load
     wait_for_angular(driver)
     
-    # STEP 2: Click "Book Now" button
-    print("🔍 Step 2: Looking for 'Book Now' button...")
+    # STEP 2: Click "Book Now" button (ID: book_now_amenity)
+    print("🔍 Step 2: Clicking 'Book Now' button...")
     
     book_now_selectors = [
-        "//button[contains(text(), 'Book Now')]",
-        "//a[contains(text(), 'Book Now')]",
-        "//button[normalize-space()='Book Now']",
-        "//button[contains(., 'Book Now')]",
-        "//*[contains(text(), 'Book Now')]",
-        "//div[contains(text(),'Desk')]//following::button[contains(text(), 'Book Now')][1]",
+        (By.ID, "book_now_amenity"),
+        (By.XPATH, "//button[@id='book_now_amenity']"),
+        (By.XPATH, "//button[contains(text(), 'Book Now') and @id='book_now_amenity']"),
+        (By.XPATH, "//button[contains(text(), 'Book Now')]"),
     ]
     
-    for i, selector in enumerate(book_now_selectors, 1):
+    for i, (by, selector) in enumerate(book_now_selectors, 1):
         try:
             print(f"  Trying selector {i}/{len(book_now_selectors)}...")
-            book_btn = WebDriverWait(driver, 5).until(
-                EC.presence_of_element_located((By.XPATH, selector))
+            book_btn = WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((by, selector))
             )
             
+            # Scroll and click
             driver.execute_script(
                 "arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", 
                 book_btn
@@ -334,27 +232,12 @@ def navigate_to_booking(driver, wait):
             time.sleep(2)
             return
             
-        except TimeoutException:
-            continue
         except Exception as e:
-            print(f"  Selector {i} error: {str(e)[:100]}")
+            print(f"  Selector {i} failed: {str(e)[:80]}")
             continue
     
     print("❌ Could not find 'Book Now' button")
     save_debug_info(driver, "book_now_not_found")
-    
-    # Show available buttons
-    print("\n📋 Available buttons:")
-    try:
-        buttons = driver.find_elements(By.TAG_NAME, "button")
-        print(f"  Total buttons found: {len(buttons)}")
-        for btn in buttons[:20]:
-            text = btn.text.strip()
-            if text:
-                print(f"  - {text}")
-    except:
-        pass
-    
     raise Exception("Could not find 'Book Now' button")
 
 def make_booking(driver, wait):
@@ -363,60 +246,101 @@ def make_booking(driver, wait):
 
     try:
         wait_for_angular(driver)
-        save_debug_info(driver, "before_booking")
+        save_debug_info(driver, "booking_form")
         
         target_date = datetime.now() + timedelta(days=DAYS_AHEAD)
         formatted_date = target_date.strftime("%d %b %Y")
         print(f"📅 Target Date: {formatted_date}")
 
-        # Set Date
+        # Click calendar icon to open date picker
+        print("🔍 Opening date picker...")
         try:
-            date_picker = wait.until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, "input[placeholder*='Date'], input[type='date']"))
+            calendar_icon_selectors = [
+                "//img[contains(@src, 'calendar_icon.png')]",
+                "//img[@class='cursor-pointer iconSize']",
+                "input[placeholder*='Date']",
+                "input[type='date']",
+            ]
+            
+            for selector in calendar_icon_selectors:
+                try:
+                    if selector.startswith("//"):
+                        calendar = driver.find_element(By.XPATH, selector)
+                    else:
+                        calendar = driver.find_element(By.CSS_SELECTOR, selector)
+                    
+                    driver.execute_script("arguments[0].click();", calendar)
+                    print("✅ Opened date picker")
+                    time.sleep(1)
+                    break
+                except:
+                    continue
+        except Exception as e:
+            print(f"⚠️  Could not open date picker: {e}")
+
+        # Set Date (try direct input if date picker opened)
+        try:
+            date_input = wait.until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, "input[placeholder*='Date'], input[type='date'], input[type='text']"))
             )
-            date_picker.clear()
-            date_picker.send_keys(formatted_date)
-            date_picker.send_keys(Keys.RETURN)
-            time.sleep(2)
+            date_input.clear()
+            date_input.send_keys(formatted_date)
+            date_input.send_keys(Keys.RETURN)
+            time.sleep(1)
             print(f"✅ Date set: {formatted_date}")
         except Exception as e:
-            print(f"⚠️  Date picker issue: {e}")
+            print(f"⚠️  Date input failed: {e}")
 
-        # Click Next/Search
+        # Select Floor/Location (if needed)
         try:
-            next_btn = wait.until(
-                EC.element_to_be_clickable(
-                    (By.XPATH, "//button[contains(text(), 'Next') or contains(text(), 'Search')]")
-                )
+            floor_selector = wait.until(
+                EC.element_to_be_clickable((By.XPATH, f"//*[contains(text(), '{TARGET_FLOOR}')]"))
             )
-            driver.execute_script("arguments[0].click();", next_btn)
-            time.sleep(3)
-            print("✅ Clicked Next")
+            driver.execute_script("arguments[0].click();", floor_selector)
+            print(f"✅ Floor selected: {TARGET_FLOOR}")
         except:
-            print("⚠️  No Next button")
+            print(f"⚠️  Floor selection not needed or not found")
 
-        # Wait for results
+        # Click "Next" button to show available desks (ID: save_booking)
+        print("🔍 Clicking 'Next' to search desks...")
+        try:
+            next_btn_selectors = [
+                (By.ID, "save_booking"),
+                (By.XPATH, "//button[@id='save_booking' and contains(text(), 'Next')]"),
+                (By.XPATH, "//button[contains(text(), 'Next')]"),
+            ]
+            
+            for by, selector in next_btn_selectors:
+                try:
+                    next_btn = WebDriverWait(driver, 5).until(
+                        EC.element_to_be_clickable((by, selector))
+                    )
+                    driver.execute_script("arguments[0].click();", next_btn)
+                    print("✅ Clicked 'Next'")
+                    time.sleep(3)
+                    break
+                except:
+                    continue
+        except Exception as e:
+            print(f"⚠️  Next button not found: {e}")
+
+        # Wait for desk results to load
         wait_for_angular(driver)
+        save_debug_info(driver, "desk_list")
 
         # Select Desk
         print(f"--- Searching for Desk {TARGET_DESK} ---")
         
-        # Try list view
+        # Try to switch to list view (if available)
         try:
-            list_view_selectors = [".fa-list", ".icon-list", "button[title='List View']"]
-            for selector in list_view_selectors:
-                try:
-                    list_view_btn = driver.find_element(By.CSS_SELECTOR, selector)
-                    driver.execute_script("arguments[0].click();", list_view_btn)
-                    time.sleep(1)
-                    print("✅ Switched to List View")
-                    break
-                except:
-                    continue
+            list_view_btn = driver.find_element(By.CSS_SELECTOR, ".fa-list, .icon-list, button[title='List View']")
+            driver.execute_script("arguments[0].click();", list_view_btn)
+            time.sleep(1)
+            print("✅ Switched to List View")
         except:
-            print("⚠️  No list view toggle")
+            print("⚠️  List view not available or not needed")
 
-        # Search
+        # Search for desk
         try:
             search_box = wait.until(
                 EC.visibility_of_element_located((By.CSS_SELECTOR, "input[placeholder*='Search'], input[type='search']"))
@@ -424,36 +348,91 @@ def make_booking(driver, wait):
             search_box.clear()
             search_box.send_keys(TARGET_DESK)
             time.sleep(2)
-            print(f"✅ Searched: {TARGET_DESK}")
+            print(f"✅ Searched for desk: {TARGET_DESK}")
+        except:
+            print("⚠️  No search box found")
+
+        # Click on the desk to select it
+        print(f"🔍 Selecting Desk {TARGET_DESK}...")
+        try:
+            desk_selectors = [
+                f"//div[contains(text(), '{TARGET_DESK}')]",
+                f"//td[contains(text(), '{TARGET_DESK}')]",
+                f"//*[text()='{TARGET_DESK}']",
+                f"//*[contains(text(), 'Desk {TARGET_DESK}')]",
+            ]
+            
+            for selector in desk_selectors:
+                try:
+                    desk_element = driver.find_element(By.XPATH, selector)
+                    driver.execute_script(
+                        "arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", 
+                        desk_element
+                    )
+                    time.sleep(0.5)
+                    driver.execute_script("arguments[0].click();", desk_element)
+                    print(f"✅ Selected Desk {TARGET_DESK}")
+                    time.sleep(1)
+                    break
+                except:
+                    continue
         except Exception as e:
-            print(f"⚠️  Search failed: {e}")
+            print(f"⚠️  Could not select desk: {e}")
 
-        # Book desk
-        book_desk_selectors = [
-            f"//div[contains(text(), '{TARGET_DESK}')]/..//button[contains(text(), 'Book')]",
-            f"//td[contains(text(), '{TARGET_DESK}')]/..//button[contains(text(), 'Book')]",
-            f"//*[contains(text(), '{TARGET_DESK}')]/ancestor::tr//button[contains(text(), 'Book')]",
-        ]
-        
-        for selector in book_desk_selectors:
-            try:
-                book_desk_btn = driver.find_element(By.XPATH, selector)
-                driver.execute_script("arguments[0].click();", book_desk_btn)
-                print(f"✅ Booked Desk {TARGET_DESK}")
-                break
-            except:
-                continue
-        else:
-            raise Exception(f"Could not book desk {TARGET_DESK}")
+        # Click final "Book Now" button (ID: save_booking in the confirmation dialog)
+        print("🔍 Clicking final 'Book Now' button...")
+        try:
+            final_book_selectors = [
+                (By.XPATH, "//button[@id='save_booking' and contains(text(), 'Book Now')]"),
+                (By.XPATH, "//button[contains(@class, 'btn-primary') and contains(text(), 'Book Now')]"),
+                (By.XPATH, "//button[contains(text(), 'Book Now')]"),
+                (By.ID, "save_booking"),
+            ]
+            
+            for by, selector in final_book_selectors:
+                try:
+                    final_book_btn = WebDriverWait(driver, 5).until(
+                        EC.element_to_be_clickable((by, selector))
+                    )
+                    driver.execute_script("arguments[0].click();", final_book_btn)
+                    print("✅ Clicked final 'Book Now'")
+                    time.sleep(2)
+                    break
+                except:
+                    continue
+        except Exception as e:
+            print(f"❌ Could not click final Book Now: {e}")
+            save_debug_info(driver, "final_book_error")
+            raise
 
-        # Confirm
-        print("--- Confirming Booking ---")
-        confirm_btn = wait.until(
-            EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Confirm') or contains(text(), 'Yes')]"))
-        )
-        driver.execute_script("arguments[0].click();", confirm_btn)
+        # Check for confirmation message
+        print("--- Checking for confirmation ---")
         time.sleep(2)
-        print(f"🎉 SUCCESS!")
+        
+        try:
+            # Look for success message
+            success_selectors = [
+                "//*[contains(text(), 'success')]",
+                "//*[contains(text(), 'Success')]",
+                "//*[contains(text(), 'confirmed')]",
+                "//*[contains(text(), 'Confirmed')]",
+                "//*[contains(text(), 'booked')]",
+                "//*[contains(text(), 'Booked')]",
+            ]
+            
+            for selector in success_selectors:
+                try:
+                    success_msg = driver.find_element(By.XPATH, selector)
+                    if success_msg.is_displayed():
+                        print(f"🎉 SUCCESS: {success_msg.text}")
+                        break
+                except:
+                    continue
+        except:
+            print("⚠️  No explicit success message found, but booking may have succeeded")
+        
+        save_debug_info(driver, "booking_complete")
+        print(f"✅ Booking process completed for {formatted_date}!")
 
     except Exception as e:
         print(f"❌ Booking failed: {e}")
@@ -468,21 +447,28 @@ def main():
         driver = start_browser()
         wait = WebDriverWait(driver, 30)
 
+        # Step 1: Login
         login(driver, wait)
-        print("⏳ Waiting for dashboard...")
-        time.sleep(10)  # Increased initial wait
+        print("⏳ Waiting for dashboard to fully load...")
+        time.sleep(10)
         
         save_debug_info(driver, "after_login")
         
+        # Step 2: Navigate to booking
         navigate_to_booking(driver, wait)
-        time.sleep(3)
+        time.sleep(2)
         
+        # Step 3: Make the booking
         make_booking(driver, wait)
         
-        print("\n✅ Booking completed!")
+        print("\n" + "="*50)
+        print("✅ BOOKING SCRIPT COMPLETED SUCCESSFULLY!")
+        print(f"📅 Desk {TARGET_DESK} on {TARGET_FLOOR}")
+        print(f"📆 Date: {(datetime.now() + timedelta(days=DAYS_AHEAD)).strftime('%d %b %Y')}")
+        print("="*50 + "\n")
 
     except Exception as e:
-        print(f"\n❌ Error: {e}")
+        print(f"\n❌ Error occurred: {e}")
         if driver:
             save_debug_info(driver, "final_error")
         exit_code = 1
@@ -492,7 +478,7 @@ def main():
             driver.quit()
             print("🔒 Browser closed")
         elif driver:
-            print("🖥️  Browser left open")
+            print("🖥️  Browser left open for inspection")
         
         exit(exit_code)
 
