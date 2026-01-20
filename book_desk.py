@@ -7,12 +7,13 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException
 from webdriver_manager.chrome import ChromeDriverManager
 import os
 
 # ================= CONFIGURATION =================
-EMAIL = os.getenv("BOOKING_EMAIL", "srinivasareddy.kumbagiri@juliusbaer.com")
-PASSWORD = os.getenv("BOOKING_PASSWORD", "Forgot@123")
+EMAIL = os.getenv("JUMPREE_USER", "srinivasareddy.kumbagiri@juliusbaer.com")
+PASSWORD = os.getenv("JUMPREE_PASS", "Forgot@123")
 URL = "https://juliusbaer.smartenspaces.com/spacemanagementV2/#/"
 
 # Target Details
@@ -20,14 +21,13 @@ TARGET_FLOOR = "Level 06"
 TARGET_DESK = "177"
 START_TIME = "09:00 AM"
 END_TIME = "06:00 PM"
-DAYS_AHEAD = 4  # Book 4 days in advance
+DAYS_AHEAD = 4
 # =================================================
 
 def start_browser():
     """Initialize Chrome with CI/headless-friendly options"""
     options = Options()
     
-    # Check if running in CI environment
     is_ci = os.getenv("CI") == "true" or os.getenv("GITHUB_ACTIONS") == "true"
     
     if is_ci:
@@ -36,7 +36,6 @@ def start_browser():
     else:
         print("🖥️  Running in local mode (headed)")
     
-    # Essential options for both local and CI
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
@@ -48,27 +47,40 @@ def start_browser():
     options.add_argument("--disable-notifications")
     options.add_argument("--disable-blink-features=AutomationControlled")
     
-    # Avoid detection as bot
     options.add_experimental_option("excludeSwitches", ["enable-automation", "enable-logging"])
     options.add_experimental_option('useAutomationExtension', False)
     
-    # Keep browser open only in local mode
     if not is_ci:
         options.add_experimental_option("detach", True)
     
     service = Service(ChromeDriverManager().install())
     driver = webdriver.Chrome(service=service, options=options)
-    
-    # Anti-detection
     driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
     
     return driver
+
+def save_debug_info(driver, step_name):
+    """Save screenshot and page source for debugging"""
+    try:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        screenshot_path = f"debug_{step_name}_{timestamp}.png"
+        html_path = f"debug_{step_name}_{timestamp}.html"
+        
+        driver.save_screenshot(screenshot_path)
+        with open(html_path, 'w', encoding='utf-8') as f:
+            f.write(driver.page_source)
+        
+        print(f"📸 Screenshot: {screenshot_path}")
+        print(f"📄 HTML saved: {html_path}")
+        print(f"🔗 Current URL: {driver.current_url}")
+    except Exception as e:
+        print(f"⚠️  Could not save debug info: {e}")
 
 def login(driver, wait):
     """Handle login flow"""
     print("--- Navigating to Login ---")
     driver.get(URL)
-    time.sleep(2)  # Let page load
+    time.sleep(3)
 
     try:
         # 1. Enter Email
@@ -77,14 +89,14 @@ def login(driver, wait):
         )
         email_field.clear()
         email_field.send_keys(EMAIL)
-        print(f"✅ Email entered: {EMAIL}")
+        print(f"✅ Email entered")
 
         # Click Proceed
         proceed_btn = wait.until(
             EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Proceed')]"))
         )
         proceed_btn.click()
-        time.sleep(1)
+        time.sleep(2)
 
         # 2. Enter Password
         pass_field = wait.until(
@@ -100,8 +112,8 @@ def login(driver, wait):
             if not checkbox.is_selected():
                 driver.execute_script("arguments[0].click();", checkbox)
                 print("✅ Terms checkbox clicked")
-        except Exception as e:
-            print(f"⚠️  No checkbox found (may not be required): {e}")
+        except:
+            print("⚠️  No checkbox found")
 
         # Click Login
         login_btn = wait.until(
@@ -109,77 +121,100 @@ def login(driver, wait):
         )
         login_btn.click()
         print("✅ Login submitted")
+        time.sleep(5)
         
     except Exception as e:
         print(f"❌ Login failed: {e}")
-        driver.save_screenshot("login_error.png")
+        save_debug_info(driver, "login_error")
         raise
 
 def navigate_to_booking(driver, wait):
-    """Navigate to desk booking section"""
+    """Navigate: Booking menu → Book Now button"""
     print("--- Navigating to Booking ---")
-    try:
-        book_now_btn = wait.until(
-            EC.element_to_be_clickable(
-                (By.XPATH, "//div[contains(text(),'Desks')]/..//button[contains(text(), 'Book Now')]")
+    
+    # STEP 1: Click "Booking" menu
+    print("🔍 Step 1: Looking for 'Booking' menu...")
+    
+    booking_menu_selectors = [
+        "//a[contains(text(), 'Booking')]",
+        "//div[contains(text(), 'Booking')]",
+        "//button[contains(text(), 'Booking')]",
+        "//*[text()='Booking']",
+        "//*[contains(@class, 'menu')]//a[contains(text(), 'Booking')]",
+        "//nav//*[contains(text(), 'Booking')]",
+    ]
+    
+    booking_clicked = False
+    for i, selector in enumerate(booking_menu_selectors, 1):
+        try:
+            print(f"  Trying selector {i}/{len(booking_menu_selectors)}...")
+            booking_menu = WebDriverWait(driver, 5).until(
+                EC.element_to_be_clickable((By.XPATH, selector))
             )
-        )
-        book_now_btn.click()
-        print("✅ Clicked Book Now")
-    except Exception as e:
-        print(f"❌ Could not find Book Now button: {e}")
-        driver.save_screenshot("booking_nav_error.png")
-        raise
+            booking_menu.click()
+            print(f"✅ Clicked 'Booking' menu")
+            booking_clicked = True
+            time.sleep(2)
+            break
+        except TimeoutException:
+            continue
+    
+    if not booking_clicked:
+        print("❌ Could not find 'Booking' menu")
+        save_debug_info(driver, "booking_menu_not_found")
+        raise Exception("Could not find 'Booking' menu item")
+    
+    # STEP 2: Click "Book Now" button
+    print("🔍 Step 2: Looking for 'Book Now' button...")
+    
+    book_now_selectors = [
+        "//button[contains(text(), 'Book Now')]",
+        "//a[contains(text(), 'Book Now')]",
+        "//div[contains(text(),'Desks')]/..//button[contains(text(), 'Book Now')]",
+        "//div[contains(text(),'Desk')]//following::button[contains(text(), 'Book Now')]",
+        "//*[contains(text(), 'Book Now')]",
+    ]
+    
+    for i, selector in enumerate(book_now_selectors, 1):
+        try:
+            print(f"  Trying selector {i}/{len(book_now_selectors)}...")
+            book_btn = WebDriverWait(driver, 5).until(
+                EC.element_to_be_clickable((By.XPATH, selector))
+            )
+            book_btn.click()
+            print(f"✅ Clicked 'Book Now' button")
+            time.sleep(2)
+            return
+        except TimeoutException:
+            continue
+    
+    print("❌ Could not find 'Book Now' button")
+    save_debug_info(driver, "book_now_not_found")
+    raise Exception("Could not find 'Book Now' button")
 
 def make_booking(driver, wait):
     """Complete the booking process"""
     print("--- Setting up Booking Details ---")
 
     try:
-        # 1. Calculate target date
         target_date = datetime.now() + timedelta(days=DAYS_AHEAD)
-        formatted_date = target_date.strftime("%d %b %Y")  # e.g., "25 Jan 2026"
+        formatted_date = target_date.strftime("%d %b %Y")
         print(f"📅 Target Date: {formatted_date}")
 
-        # 2. Select Floor (if needed)
-        try:
-            floor_dropdown = wait.until(
-                EC.element_to_be_clickable((By.XPATH, f"//*[contains(text(), '{TARGET_FLOOR}')]"))
-            )
-            floor_dropdown.click()
-            print(f"✅ Floor selected: {TARGET_FLOOR}")
-        except:
-            print(f"⚠️  Floor selection might already be set to {TARGET_FLOOR}")
-
-        # 3. Set Date
+        # Set Date
         try:
             date_picker = wait.until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, "input[placeholder*='Date']"))
+                EC.element_to_be_clickable((By.CSS_SELECTOR, "input[placeholder*='Date'], input[type='date']"))
             )
             date_picker.clear()
             date_picker.send_keys(formatted_date)
             date_picker.send_keys(Keys.RETURN)
-            time.sleep(1)
+            time.sleep(2)
             print(f"✅ Date set: {formatted_date}")
         except Exception as e:
             print(f"⚠️  Date picker issue: {e}")
 
-        # 4. Set Time (uncomment and adjust selectors as needed)
-        """
-        print(f"--- Setting Time: {START_TIME} to {END_TIME} ---")
-        start_time_dropdown = driver.find_element(By.XPATH, "(//input[@role='combobox'])[1]")
-        start_time_dropdown.click()
-        select_start = driver.find_element(By.XPATH, f"//span[contains(text(), '{START_TIME}')]")
-        select_start.click()
-
-        end_time_dropdown = driver.find_element(By.XPATH, "(//input[@role='combobox'])[2]")
-        end_time_dropdown.click()
-        select_end = driver.find_element(By.XPATH, f"//span[contains(text(), '{END_TIME}')]")
-        select_end.click()
-        print("✅ Time set")
-        """
-
-        # 5. Click Next/Search
+        # Click Next/Search
         try:
             next_btn = wait.until(
                 EC.element_to_be_clickable(
@@ -187,46 +222,46 @@ def make_booking(driver, wait):
                 )
             )
             next_btn.click()
-            time.sleep(2)
+            time.sleep(3)
             print("✅ Clicked Next")
         except:
-            print("⚠️  No Next button found, proceeding...")
+            print("⚠️  No Next button, continuing...")
 
-        # 6. Select Desk 177 (List View)
+        # Select Desk
         print(f"--- Searching for Desk {TARGET_DESK} ---")
+        
+        # Try list view
         try:
-            # Switch to List View
             list_view_btn = wait.until(
                 EC.element_to_be_clickable(
-                    (By.CSS_SELECTOR, ".fa-list, .icon-list, button[title='List View']")
-                )
+                    (By.CSS_SELECTOR, ".fa-list, .icon-list, button[title='List View']"))
             )
             list_view_btn.click()
             time.sleep(1)
             print("✅ Switched to List View")
+        except:
+            print("⚠️  List view button not found")
 
-            # Search for desk
+        # Search for desk
+        try:
             search_box = wait.until(
                 EC.visibility_of_element_located((By.CSS_SELECTOR, "input[placeholder*='Search']"))
             )
             search_box.clear()
             search_box.send_keys(TARGET_DESK)
-            time.sleep(2)  # Wait for filter
+            time.sleep(2)
             print(f"✅ Searched for desk: {TARGET_DESK}")
+        except:
+            print("⚠️  Search box not found")
 
-            # Book the desk
-            book_desk_btn = driver.find_element(
-                By.XPATH, f"//div[contains(text(), '{TARGET_DESK}')]/..//button[contains(text(), 'Book')]"
-            )
-            book_desk_btn.click()
-            print(f"✅ Clicked Book for Desk {TARGET_DESK}")
+        # Book the desk
+        book_desk_btn = driver.find_element(
+            By.XPATH, f"//div[contains(text(), '{TARGET_DESK}')]/..//button[contains(text(), 'Book')]"
+        )
+        book_desk_btn.click()
+        print(f"✅ Clicked Book for Desk {TARGET_DESK}")
 
-        except Exception as e:
-            print(f"❌ Could not find/book desk: {e}")
-            driver.save_screenshot("desk_selection_error.png")
-            raise
-
-        # 7. Final Confirmation
+        # Final Confirmation
         print("--- Confirming Booking ---")
         confirm_btn = wait.until(
             EC.element_to_be_clickable(
@@ -235,11 +270,11 @@ def make_booking(driver, wait):
         )
         confirm_btn.click()
         time.sleep(2)
-        print(f"🎉 SUCCESS: Booking Confirmed for {formatted_date}!")
+        print(f"🎉 SUCCESS: Booking Confirmed!")
 
     except Exception as e:
         print(f"❌ Booking failed: {e}")
-        driver.save_screenshot("booking_error.png")
+        save_debug_info(driver, "booking_error")
         raise
 
 def main():
@@ -249,29 +284,28 @@ def main():
         wait = WebDriverWait(driver, 20)
 
         login(driver, wait)
-        time.sleep(5)  # Wait for dashboard animation
+        print("⏳ Waiting for dashboard...")
+        time.sleep(8)
+        
+        save_debug_info(driver, "after_login")
         
         navigate_to_booking(driver, wait)
-        time.sleep(3)  # Wait for booking page load
+        time.sleep(3)
         
         make_booking(driver, wait)
         
         print("\n✅ Script completed successfully!")
 
     except Exception as e:
-        print(f"\n❌ An error occurred: {e}")
+        print(f"\n❌ Error: {e}")
         if driver:
-            driver.save_screenshot("final_error.png")
-            print("📸 Screenshot saved as final_error.png")
+            save_debug_info(driver, "final_error")
         raise
         
     finally:
-        # Only close in CI mode
         if driver and os.getenv("CI") == "true":
             driver.quit()
             print("🔒 Browser closed")
-        elif driver:
-            print("🖥️  Browser left open for inspection")
 
 if __name__ == "__main__":
     main()
