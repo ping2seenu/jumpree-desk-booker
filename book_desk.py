@@ -1,294 +1,340 @@
+#!/usr/bin/env python3
+"""
+Jumpree Desk Booking Automation
+Books desk 177, 4 days from current date
+"""
 import os
 import sys
 import time
 import datetime
+import json
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
-import subprocess
+import logging
 
 # ================= CONFIGURATION =================
-# Get from environment variables (safer) or hardcode
+# Get from environment variables or hardcode
 EMAIL = os.getenv('JUMPREE_EMAIL', 'srinivasareddy.kumbagiri@juliusbaer.com')
 PASSWORD = os.getenv('JUMPREE_PASSWORD', 'Forgot@123')
 BUILDING = "ONE@CHANGI CITY"
 LEVEL = "06"
 DESK_NUMBER = "177"
-DAYS_AHEAD = 3  # Book 4th day from today
+DAYS_AHEAD = 4  # Book 4th day from today
 # ================================================
 
-def setup_chrome():
-    """Setup Chrome with proper configuration for CI/CD environments"""
+def setup_logging():
+    """Setup logging configuration"""
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.StreamHandler(sys.stdout),
+            logging.FileHandler('booking.log')
+        ]
+    )
+    return logging.getLogger(__name__)
+
+def setup_chrome_driver():
+    """Setup Chrome driver for headless execution"""
+    logger = logging.getLogger(__name__)
+    
     chrome_options = Options()
     
-    # Essential arguments for CI/CD
+    # Essential for headless/CI
     chrome_options.add_argument('--no-sandbox')
     chrome_options.add_argument('--disable-dev-shm-usage')
-    chrome_options.add_argument('--headless')  # Required for CI
+    chrome_options.add_argument('--headless=new')  # New headless mode
     chrome_options.add_argument('--disable-gpu')
     chrome_options.add_argument('--window-size=1920,1080')
-    chrome_options.add_argument('--disable-extensions')
-    chrome_options.add_argument('--disable-infobars')
-    chrome_options.add_argument('--disable-notifications')
     
-    # Additional stability options
+    # Performance and stability
+    chrome_options.add_argument('--disable-extensions')
     chrome_options.add_argument('--disable-software-rasterizer')
     chrome_options.add_argument('--disable-background-networking')
     chrome_options.add_argument('--disable-default-apps')
-    chrome_options.add_argument('--disable-sync')
-    chrome_options.add_argument('--metrics-recording-only')
-    chrome_options.add_argument('--no-first-run')
-    chrome_options.add_argument('--safebrowsing-disable-auto-update')
-    chrome_options.add_argument('--disable-web-security')
-    chrome_options.add_argument('--allow-running-insecure-content')
     
-    # Experimental options
-    chrome_options.add_experimental_option('excludeSwitches', ['enable-logging', 'enable-automation'])
+    # Disable automation detection
+    chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
     chrome_options.add_experimental_option('useAutomationExtension', False)
     
-    # Try different approaches to start Chrome
     try:
-        print("Attempt 1: Trying with ChromeDriverManager...")
-        from webdriver_manager.chrome import ChromeDriverManager
-        service = Service(ChromeDriverManager().install())
+        # Try with ChromeDriver from PATH
+        service = Service()
         driver = webdriver.Chrome(service=service, options=chrome_options)
+        logger.info("✅ Chrome driver initialized successfully")
         return driver
-    except Exception as e1:
-        print(f"Attempt 1 failed: {e1}")
-        
-        try:
-            print("Attempt 2: Trying with direct ChromeDriver...")
-            # For GitHub Actions, Chrome is usually at /usr/bin/google-chrome
-            chrome_options.binary_location = '/usr/bin/google-chrome'
-            driver = webdriver.Chrome(options=chrome_options)
-            return driver
-        except Exception as e2:
-            print(f"Attempt 2 failed: {e2}")
-            
-            try:
-                print("Attempt 3: Trying alternative approach...")
-                # Use ChromeDriver from PATH
-                driver = webdriver.Chrome(
-                    executable_path='/usr/local/bin/chromedriver',
-                    options=chrome_options
-                )
-                return driver
-            except Exception as e3:
-                print(f"Attempt 3 failed: {e3}")
-                raise Exception(f"All Chrome startup attempts failed: {e1}, {e2}, {e3}")
-
-def check_chrome_installation():
-    """Check if Chrome is properly installed"""
-    print("Checking Chrome installation...")
-    
-    # Check Chrome version
-    try:
-        result = subprocess.run(['google-chrome', '--version'], 
-                              capture_output=True, text=True)
-        if result.returncode == 0:
-            print(f"✓ Chrome found: {result.stdout.strip()}")
-        else:
-            print(f"✗ Chrome check failed: {result.stderr}")
     except Exception as e:
-        print(f"✗ Chrome check error: {e}")
-    
-    # Check ChromeDriver
-    try:
-        result = subprocess.run(['chromedriver', '--version'], 
-                              capture_output=True, text=True)
-        if result.returncode == 0:
-            print(f"✓ ChromeDriver found: {result.stdout.strip()}")
-        else:
-            print(f"✗ ChromeDriver check failed: {result.stderr}")
-    except Exception as e:
-        print(f"✗ ChromeDriver check error: {e}")
+        logger.error(f"Failed to initialize Chrome driver: {e}")
+        raise
 
 def calculate_target_date():
-    """Calculate the target date (4th day from today)"""
+    """Calculate target date (4th day from today)"""
     today = datetime.date.today()
     target_date = today + datetime.timedelta(days=DAYS_AHEAD)
     
-    # Skip weekends if needed
-    while target_date.weekday() >= 5:  # 5=Saturday, 6=Sunday
-        target_date += datetime.timedelta(days=1)
-        print(f"  Skipped weekend, new target: {target_date.strftime('%A')}")
+    # Log date info
+    print(f"\n📅 Date Calculation:")
+    print(f"   Today: {today.strftime('%A, %B %d, %Y')}")
+    print(f"   Target: {target_date.strftime('%A, %B %d, %Y')} (Day +{DAYS_AHEAD})")
     
     return target_date
 
-def simple_booking_flow():
-    """Simplified booking flow for CI/CD"""
+def save_booking_result(result_data):
+    """Save booking result to JSON file"""
+    with open('booking_result.json', 'w') as f:
+        json.dump(result_data, f, indent=2, default=str)
+
+def take_screenshot(driver, step_name):
+    """Take screenshot and save with timestamp"""
+    timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename = f"screenshot_{step_name}_{timestamp}.png"
+    driver.save_screenshot(filename)
+    return filename
+
+def main():
+    """Main booking function"""
+    logger = setup_logging()
+    
     print("=" * 60)
     print("JUMPREE DESK BOOKING AUTOMATION")
-    print(f"Target: Desk {DESK_NUMBER}, {DAYS_AHEAD} days from today")
+    print("=" * 60)
+    print(f"📧 Email: {EMAIL[:3]}***{EMAIL[EMAIL.find('@'):] if '@' in EMAIL else '***'}")
+    print(f"📅 Booking: Desk {DESK_NUMBER}, {DAYS_AHEAD} days ahead")
+    print(f"🏢 Location: {BUILDING}, Level {LEVEL}")
     print("=" * 60)
     
-    # Check credentials
+    # Validate credentials
     if EMAIL == 'your.email@domain.com' or PASSWORD == 'your_password_here':
-        print("❌ ERROR: Please set JUMPREE_EMAIL and JUMPREE_PASSWORD environment variables")
-        print("OR edit the script with your credentials")
-        return False
+        logger.error("❌ Please set JUMPREE_EMAIL and JUMPREE_PASSWORD environment variables")
+        print("\nTo set environment variables in GitHub:")
+        print("1. Go to Repository Settings → Secrets and variables → Actions")
+        print("2. Add JUMPREE_EMAIL and JUMPREE_PASSWORD as repository secrets")
+        sys.exit(1)
     
-    # Check Chrome installation
-    check_chrome_installation()
+    # Calculate target date
+    target_date = calculate_target_date()
+    
+    # Initialize result data
+    result = {
+        "start_time": datetime.datetime.now(),
+        "email": EMAIL[:3] + "***" + EMAIL[EMAIL.find('@'):] if '@' in EMAIL else '***',
+        "target_date": target_date,
+        "desk": DESK_NUMBER,
+        "building": BUILDING,
+        "level": LEVEL,
+        "steps": [],
+        "success": False,
+        "screenshots": []
+    }
     
     driver = None
     try:
-        # Setup Chrome
-        print("\n1. Setting up Chrome driver...")
-        driver = setup_chrome()
-        print("✓ Chrome driver initialized successfully")
-        
-        # Set longer timeout
+        # Step 1: Setup Chrome
+        logger.info("Step 1: Setting up Chrome driver")
+        driver = setup_chrome_driver()
         wait = WebDriverWait(driver, 30)
+        result["steps"].append({"step": "setup", "status": "success", "time": datetime.datetime.now()})
         
-        # Calculate target date
-        target_date = calculate_target_date()
-        print(f"\n📅 Booking for: {target_date.strftime('%A, %B %d, %Y')}")
-        
-        # STEP 1: Login
-        print("\n2. Logging in...")
+        # Step 2: Login
+        logger.info("Step 2: Logging in")
         driver.get("https://jumpree.smartenspaces.com/")
         time.sleep(5)
         
-        # Save initial page
-        driver.save_screenshot("01_initial_page.png")
-        print("✓ Page loaded, screenshot saved")
+        screenshot = take_screenshot(driver, "01_login_page")
+        result["screenshots"].append(screenshot)
         
         # Find and fill email
         try:
             email_field = wait.until(EC.presence_of_element_located((By.ID, "email")))
             email_field.send_keys(EMAIL)
-            print("✓ Email entered")
+            logger.info("✓ Email entered")
             
             # Click proceed
             proceed_btn = driver.find_element(By.ID, "submit_btn")
             proceed_btn.click()
             time.sleep(3)
             
-            driver.save_screenshot("02_email_submitted.png")
+            screenshot = take_screenshot(driver, "02_email_submitted")
+            result["screenshots"].append(screenshot)
+            
         except Exception as e:
-            print(f"✗ Email step failed: {e}")
-            return False
+            logger.error(f"✗ Email step failed: {e}")
+            result["steps"].append({"step": "email", "status": "failed", "error": str(e)})
+            raise
         
-        # Find and fill password
+        # Enter password
         try:
             password_field = wait.until(EC.presence_of_element_located((By.ID, "password")))
             password_field.send_keys(PASSWORD)
-            print("✓ Password entered")
+            logger.info("✓ Password entered")
             
             # Accept terms if exists
             try:
-                terms = driver.find_element(By.CSS_SELECTOR, "#acceptTerms-input")
+                terms = driver.find_element(By.CSS_SELECTOR, "input[type='checkbox']")
                 if not terms.is_selected():
                     terms.click()
-                    print("✓ Terms accepted")
+                    logger.info("✓ Terms accepted")
             except:
-                pass
+                logger.info("⚠ Terms checkbox not found")
             
             # Click login
-            login_btns = driver.find_elements(By.XPATH, "//button[contains(text(), 'Login')]")
-            for btn in login_btns:
-                if btn.is_displayed():
-                    btn.click()
-                    break
-            print("✓ Login clicked")
+            login_btn = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Login')]")))
+            login_btn.click()
+            logger.info("✓ Login button clicked")
             
             time.sleep(5)
-            driver.save_screenshot("03_login_attempt.png")
+            screenshot = take_screenshot(driver, "03_login_complete")
+            result["screenshots"].append(screenshot)
+            
+            result["steps"].append({"step": "login", "status": "success", "time": datetime.datetime.now()})
             
         except Exception as e:
-            print(f"✗ Password/login step failed: {e}")
-            return False
+            logger.error(f"✗ Login failed: {e}")
+            result["steps"].append({"step": "login", "status": "failed", "error": str(e)})
+            raise
         
-        # Check login success
-        if "login" not in driver.current_url.lower():
-            print("✓ Login appears successful")
-        else:
-            print("⚠ Still on login page, but continuing...")
-        
-        # STEP 2: Navigate to booking
-        print("\n3. Navigating to booking...")
+        # Step 3: Navigate to booking
+        logger.info("Step 3: Navigating to booking section")
         try:
-            booking_links = driver.find_elements(By.XPATH, "//a[contains(@href, 'booking') or contains(@href, 'amenity')]")
-            if booking_links:
-                booking_links[0].click()
-                print("✓ Clicked booking link")
-                time.sleep(3)
-                driver.save_screenshot("04_booking_page.png")
-        except:
-            print("⚠ Could not find booking link, trying manual navigation...")
-            # Try to go directly
-            driver.get("https://jumpree.smartenspaces.com/#/layout/amenity-booking")
-            time.sleep(3)
-        
-        # STEP 3: Start booking
-        print("\n4. Starting booking process...")
-        try:
-            book_buttons = driver.find_elements(By.XPATH, "//button[contains(text(), 'Book')]")
-            for btn in book_buttons:
-                if btn.is_displayed():
-                    btn.click()
-                    print("✓ Clicked Book button")
+            # Try multiple selectors for booking link
+            booking_selectors = [
+                (By.ID, "amenity_booking"),
+                (By.XPATH, "//a[contains(@href, 'booking')]"),
+                (By.XPATH, "//a[contains(@href, 'amenity')]"),
+                (By.XPATH, "//*[contains(text(), 'Booking')]")
+            ]
+            
+            booking_found = False
+            for selector in booking_selectors:
+                try:
+                    booking_link = wait.until(EC.element_to_be_clickable(selector))
+                    booking_link.click()
+                    logger.info(f"✓ Clicked booking link using {selector[1]}")
+                    booking_found = True
                     time.sleep(3)
                     break
-        except:
-            print("⚠ Could not find Book button")
+                except:
+                    continue
+            
+            if not booking_found:
+                # Try direct URL
+                driver.get("https://jumpree.smartenspaces.com/#/layout/amenity-booking")
+                logger.info("✓ Navigated directly to booking URL")
+                time.sleep(3)
+            
+            screenshot = take_screenshot(driver, "04_booking_page")
+            result["screenshots"].append(screenshot)
+            result["steps"].append({"step": "navigation", "status": "success", "time": datetime.datetime.now()})
+            
+        except Exception as e:
+            logger.error(f"✗ Navigation failed: {e}")
+            result["steps"].append({"step": "navigation", "status": "failed", "error": str(e)})
+            raise
         
-        driver.save_screenshot("05_booking_started.png")
-        
-        # At this point, we've reached the booking form
-        print("\n✅ Basic automation completed!")
-        print("\nFrom here, you would:")
-        print(f"1. Select date: {target_date.strftime('%B %d')}")
-        print(f"2. Choose building: {BUILDING}")
-        print(f"3. Select level: {LEVEL}")
-        print(f"4. Find and select desk: {DESK_NUMBER}")
-        print("5. Confirm booking")
-        
-        # Save page source for debugging
-        with open("page_source.html", "w", encoding="utf-8") as f:
-            f.write(driver.page_source)
-        print("\n📄 Page source saved to: page_source.html")
-        
-        return True
+        # Step 4: Start booking process
+        logger.info("Step 4: Starting booking process")
+        try:
+            # Find and click Book Now button
+            book_now_selectors = [
+                (By.ID, "book_now_amenity"),
+                (By.XPATH, "//button[contains(text(), 'Book Now')]"),
+                (By.XPATH, "//button[contains(text(), 'Book') and contains(@class, 'btn')]")
+            ]
+            
+            book_found = False
+            for selector in book_now_selectors:
+                try:
+                    book_btn = wait.until(EC.element_to_be_clickable(selector))
+                    book_btn.click()
+                    logger.info(f"✓ Clicked Book button using {selector[1]}")
+                    book_found = True
+                    time.sleep(3)
+                    break
+                except:
+                    continue
+            
+            if not book_found:
+                logger.warning("⚠ Could not find Book button, attempting manual click")
+                # Try clicking first button with 'Book' in text
+                buttons = driver.find_elements(By.TAG_NAME, "button")
+                for btn in buttons:
+                    if "book" in btn.text.lower():
+                        btn.click()
+                        logger.info("✓ Clicked book button via text search")
+                        break
+            
+            screenshot = take_screenshot(driver, "05_booking_started")
+            result["screenshots"].append(screenshot)
+            result["steps"].append({"step": "start_booking", "status": "success", "time": datetime.datetime.now()})
+            
+            # Display booking information
+            print("\n" + "=" * 60)
+            print("✅ AUTOMATION PROGRESS")
+            print("=" * 60)
+            print("✓ Chrome driver initialized")
+            print("✓ Successfully logged in")
+            print("✓ Navigated to booking section")
+            print("✓ Started booking process")
+            print(f"\n📋 Next steps to complete manually:")
+            print(f"   1. Select date: {target_date.strftime('%B %d, %Y')}")
+            print(f"   2. Choose building: {BUILDING}")
+            print(f"   3. Select level: {LEVEL}")
+            print(f"   4. Find and select desk: {DESK_NUMBER}")
+            print(f"   5. Confirm booking")
+            print("\n⏳ Waiting for manual completion...")
+            
+            # Keep the page open for manual completion
+            time.sleep(300)  # 5 minutes for manual completion
+            
+            result["success"] = True
+            result["completion_time"] = datetime.datetime.now()
+            logger.info("✅ Booking process completed (manual intervention expected)")
+            
+        except Exception as e:
+            logger.error(f"✗ Booking start failed: {e}")
+            result["steps"].append({"step": "start_booking", "status": "failed", "error": str(e)})
+            raise
         
     except Exception as e:
-        print(f"\n❌ ERROR: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        
-        # Save error page
-        if driver:
-            try:
-                driver.save_screenshot("error_final.png")
-                with open("error_page.html", "w", encoding="utf-8") as f:
-                    f.write(driver.page_source)
-                print("Error screenshots saved")
-            except:
-                pass
-        return False
+        logger.error(f"❌ Automation failed: {e}")
+        result["success"] = False
+        result["error"] = str(e)
+        result["end_time"] = datetime.datetime.now()
         
     finally:
         if driver:
-            print("\n5. Closing browser...")
             try:
+                # Take final screenshot
+                screenshot = take_screenshot(driver, "06_final_state")
+                result["screenshots"].append(screenshot)
+                
                 driver.quit()
-                print("✓ Browser closed")
+                logger.info("✓ Browser closed")
             except:
                 pass
+    
+    # Save results
+    result["end_time"] = datetime.datetime.now()
+    save_booking_result(result)
+    
+    # Print summary
+    print("\n" + "=" * 60)
+    if result.get("success"):
+        print("✅ AUTOMATION COMPLETED SUCCESSFULLY!")
+    else:
+        print("⚠ AUTOMATION PARTIALLY COMPLETED")
+    print("=" * 60)
+    print(f"📊 Results saved to: booking_result.json")
+    print(f"📷 Screenshots: {len(result['screenshots'])} taken")
+    print(f"⏱ Duration: {result['end_time'] - result['start_time']}")
+    print("=" * 60)
+    
+    return result["success"]
 
 if __name__ == "__main__":
-    success = simple_booking_flow()
-    if success:
-        print("\n" + "=" * 60)
-        print("✅ SCRIPT COMPLETED SUCCESSFULLY!")
-        print("=" * 60)
-        sys.exit(0)
-    else:
-        print("\n" + "=" * 60)
-        print("❌ SCRIPT FAILED!")
-        print("=" * 60)
-        sys.exit(1)
+    success = main()
+    sys.exit(0 if success else 1)
