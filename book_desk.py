@@ -9,8 +9,8 @@ from webdriver_manager.chrome import ChromeDriverManager
 
 # --- CONFIGURATION ---
 URL = "https://juliusbaer.smartenspaces.com/spacemanagementV2/#/"
-EMAIL = "srinivasareddy.kumbagiri@juliusbaer.com"
-PASSWORD = "Forgot@123"
+EMAIL = ""
+PASSWORD = ""
 FLOOR = "Level 06"
 DESK_ID = "177"
 START_TIME = "09:00 AM"
