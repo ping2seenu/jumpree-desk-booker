@@ -17,7 +17,7 @@ FLOOR_DEFAULT = "6"
 TIME_SLOT_DEFAULT = "09:00-18:00"
 
 # Next day
-tomorrow = datetime.today() + timedelta(days=1)
+tomorrow = datetime.today() + timedelta(days=4)
 BOOK_DATE = tomorrow.strftime("%d %b %Y")
 
 # Chrome Options for GitHub Actions
