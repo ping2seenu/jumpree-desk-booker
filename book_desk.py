@@ -8,21 +8,26 @@ from datetime import datetime, timedelta
 import os
 import time
 
-# Config
+# ---- CONFIG ----
 URL = "https://juliusbaer.smartenspaces.com"
 USERNAME = os.getenv("JUMPREE_USER")
 PASSWORD = os.getenv("JUMPREE_PASS")
 DESK_NUMBER = os.getenv("DESK_NUMBER", "177")
-FLOOR_DEFAULT = "6"
-TIME_SLOT_DEFAULT = "09:00-18:00"
+FLOOR_DEFAULT = os.getenv("FLOOR", "6")
+TIME_SLOT_DEFAULT = "09:00-18:00"  # defaulted in portal
 
-# Next day
+# ---- TOMORROW'S DATE ----
 tomorrow = datetime.today() + timedelta(days=4)
 BOOK_DATE = tomorrow.strftime("%d %b %Y")
+print("Booking Details:")
+print("Date:", BOOK_DATE)
+print("Desk:", DESK_NUMBER)
+print("Floor:", FLOOR_DEFAULT)
+print("Time:", TIME_SLOT_DEFAULT)
 
-# Chrome Options for GitHub Actions
+# ---- CHROME OPTIONS ----
 options = webdriver.ChromeOptions()
-options.add_argument("--headless=new")  
+options.add_argument("--headless=new")  # works in GitHub Actions
 options.add_argument("--no-sandbox")
 options.add_argument("--disable-dev-shm-usage")
 options.add_argument("--disable-gpu")
@@ -32,33 +37,93 @@ driver = webdriver.Chrome(
     service=Service(ChromeDriverManager().install()),
     options=options
 )
-
 wait = WebDriverWait(driver, 30)
 
-# Open portal
+# ---- OPEN PORTAL ----
 driver.get(URL)
+time.sleep(5)  # wait for portal to fully load
 
-# Login
-wait.until(EC.presence_of_element_located((By.ID, "username"))).send_keys(USERNAME)
-driver.find_element(By.ID, "password").send_keys(PASSWORD)
-driver.find_element(By.ID, "login").click()
+# ---- LOGIN ----
+try:
+    # Try common username input locators
+    username_input = wait.until(
+        EC.presence_of_element_located((
+            By.XPATH, "//input[@type='text' or @name='username' or contains(@placeholder,'Username')]"
+        ))
+    )
+    username_input.send_keys(USERNAME)
 
-# Booking page
-wait.until(EC.element_to_be_clickable((By.XPATH, "//button[contains(.,'Book')]"))).click()
+    password_input = driver.find_element(
+        By.XPATH, "//input[@type='password' or @name='password' or contains(@placeholder,'Password')]"
+    )
+    password_input.send_keys(PASSWORD)
 
-# Date
-wait.until(EC.element_to_be_clickable((By.XPATH, f"//span[text()='{BOOK_DATE}']"))).click()
+    # Click login button
+    login_btn = driver.find_element(
+        By.XPATH, "//button[contains(.,'Login') or contains(.,'Sign in')]"
+    )
+    login_btn.click()
+except Exception as e:
+    print("❌ Login failed:", e)
+    driver.save_screenshot("login_error.png")
+    driver.quit()
+    exit(1)
 
-# Floor defaulted
-# Time slot defaulted
+# ---- OPEN BOOKING PAGE ----
+try:
+    book_btn = wait.until(
+        EC.element_to_be_clickable((By.XPATH, "//button[contains(.,'Book')]"))
+    )
+    book_btn.click()
+except Exception as e:
+    print("❌ Could not open booking page:", e)
+    driver.save_screenshot("booking_page_error.png")
+    driver.quit()
+    exit(1)
 
-# Desk
-wait.until(EC.element_to_be_clickable((By.XPATH, f"//span[contains(.,'{DESK_NUMBER}')]"))).click()
+# ---- SELECT DATE ----
+try:
+    date_elem = wait.until(
+        EC.element_to_be_clickable((By.XPATH, f"//span[text()='{BOOK_DATE}']"))
+    )
+    date_elem.click()
+except Exception as e:
+    print("❌ Could not select date:", e)
+    driver.save_screenshot("date_error.png")
+    driver.quit()
+    exit(1)
 
-# Next + Book Now
-wait.until(EC.element_to_be_clickable((By.XPATH, "//button[contains(.,'Next')]"))).click()
-wait.until(EC.element_to_be_clickable((By.XPATH, "//button[contains(.,'Book Now')]"))).click()
+# ---- FLOOR AND TIME ----
+# Skip, defaulted in portal
 
-print("✅ Desk booked successfully")
-time.sleep(2)
+# ---- SELECT DESK ----
+try:
+    desk_elem = wait.until(
+        EC.element_to_be_clickable((By.XPATH, f"//span[contains(.,'{DESK_NUMBER}')]"))
+    )
+    desk_elem.click()
+except Exception as e:
+    print("❌ Could not select desk:", e)
+    driver.save_screenshot("desk_error.png")
+    driver.quit()
+    exit(1)
+
+# ---- NEXT AND BOOK NOW ----
+try:
+    next_btn = wait.until(
+        EC.element_to_be_clickable((By.XPATH, "//button[contains(.,'Next')]"))
+    )
+    next_btn.click()
+
+    book_now_btn = wait.until(
+        EC.element_to_be_clickable((By.XPATH, "//button[contains(.,'Book Now')]"))
+    )
+    book_now_btn.click()
+except Exception as e:
+    print("❌ Could not finalize booking:", e)
+    driver.save_screenshot("book_now_error.png")
+    driver.quit()
+    exit(1)
+
+print("✅ Desk booked successfully!")
 driver.quit()
