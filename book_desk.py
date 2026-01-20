@@ -16,7 +16,7 @@ EMAIL = os.getenv('JUMPREE_EMAIL', 'srinivasareddy.kumbagiri@juliusbaer.com')  #
 PASSWORD = os.getenv('JUMPREE_PASSWORD', 'Forgot@123')  # Set in GitHub Secrets
 BUILDING = "ONE@CHANGI CITY"
 LEVEL = "06"
-DAYS_AHEAD = 1
+DAYS_AHEAD = 4
 # ================================================
 
 def setup_driver():
