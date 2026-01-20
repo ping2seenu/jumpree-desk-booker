@@ -1,0 +1,28 @@
+name: Jumpree Auto Booking
+
+on:
+  schedule:
+    - cron: '30 1 * * *'   # 7:00 AM IST
+  workflow_dispatch:
+
+jobs:
+  run-script:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+
+    - name: Install dependencies
+      run: pip install -r requirements.txt
+
+    - name: Run automation
+      env:
+        JUMPREE_USER: ${{ secrets.JUMPREE_USER }}
+        JUMPREE_PASS: ${{ secrets.JUMPREE_PASS }}
+      run: python book_desk.py
