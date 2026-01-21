@@ -24,7 +24,7 @@ jobs:
 
       - name: Run booking script
         env:
-          JUMPREE_EMAIL: ${{ secrets.JUMPREE_EMAIL }}
+          JUMPREE_USERNAME: ${{ secrets.JUMPREE_USERNAME }}
           JUMPREE_PASSWORD: ${{ secrets.JUMPREE_PASSWORD }}
         run: |
           python book_desk.py
