@@ -10,7 +10,7 @@ import os
 
 # ================= CONFIG =================
 
-JUMPREE_URL = "https://jumpree.smartenspaces.com"
+JUMPREE_URL = "https://juliusbaer.smartenspaces.com"
 LOCATION = "ONE@CHANGI CITY"
 LEVEL = "Level 06"
 DESK_NUMBER = None   # Optional
