@@ -1,4 +1,3 @@
-import os
 import time
 from datetime import datetime, timedelta
 
@@ -10,31 +9,28 @@ from selenium.webdriver.support import expected_conditions as EC
 
 # ---------------- CONFIG ----------------
 JUMPREE_URL = "https://juliusbaer.smartenspaces.com"  # Hardcoded
-LEVEL = "Level 6"                                      # Hardcoded
-DESK = "L6-177"                                        # Hardcoded
+USERNAME = "srinivasareddy.kumbagiri@juliusbaer.com"                    # Hardcoded
+PASSWORD = "Forgot@123"                          # Hardcoded
+LEVEL = "Level 6"                                     # Hardcoded
+DESK = "L6-177"                                       # Hardcoded
 # ----------------------------------------
 
-USERNAME = os.getenv("JUMPREE_USERNAME")
-PASSWORD = os.getenv("JUMPREE_PASSWORD")
-
-if not USERNAME:
-    raise Exception("❌ JUMPREE_USERNAME secret missing")
-
-if not PASSWORD:
-    raise Exception("❌ JUMPREE_PASSWORD secret missing")
-
+# Booking date = today + 4 days
 BOOK_DATE = (datetime.now() + timedelta(days=4)).strftime("%d/%m/%Y")
 print("🚀 Jumpree automation started")
 print("📅 Booking date:", BOOK_DATE)
 
 # ---------------- CHROME OPTIONS ----------------
 options = Options()
-options.add_argument("--headless")
+options.add_argument("--headless=new")  # new headless engine
 options.add_argument("--no-sandbox")
 options.add_argument("--disable-dev-shm-usage")
 options.add_argument("--disable-blink-features=AutomationControlled")
+options.add_argument("--window-size=1920,1080")
+
 driver = webdriver.Chrome(options=options)
 wait = WebDriverWait(driver, 60)
+
 
 # ---------------- HELPER ----------------
 def js_click(el):
@@ -44,14 +40,13 @@ def js_click(el):
 # ---------------- LOGIN ----------------
 try:
     driver.get(JUMPREE_URL)
-
-    # Wait until page fully loaded
+    # Wait for page to fully load
     WebDriverWait(driver, 60).until(
         lambda d: d.execute_script("return document.readyState") == "complete"
     )
     time.sleep(3)
 
-    # Switch to iframe if exists
+    # Switch iframe if exists
     iframes = driver.find_elements(By.TAG_NAME, "iframe")
     if iframes:
         print("🔁 Switching iframe")
