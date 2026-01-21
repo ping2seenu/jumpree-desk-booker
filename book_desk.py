@@ -8,11 +8,11 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
-# ---------------- CONFIG ----------------
-JUMPREE_URL = "https://juliusbaer.smartenspaces.com"   # <-- hardcode
-LEVEL = "Level 6"                                 # <-- change
-DESK = "L6-177"                                    # <-- change
-# ----------------------------------------
+# ---------------- HARD CODE CONFIG ----------------
+JUMPREE_URL = "https://juliusbaer.smartenspaces.com"
+LEVEL = "Level 6"
+DESK = "L6-177"
+# --------------------------------------------------
 
 USERNAME = os.getenv("JUMPREE_USERNAME")
 PASSWORD = os.getenv("JUMPREE_PASSWORD")
@@ -29,7 +29,6 @@ BOOK_DATE = (datetime.now() + timedelta(days=4)).strftime("%d/%m/%Y")
 print("🚀 Jumpree automation started")
 print("📅 Booking date:", BOOK_DATE)
 
-# Chrome setup
 options = Options()
 options.add_argument("--headless")
 options.add_argument("--no-sandbox")
@@ -38,21 +37,52 @@ options.add_argument("--disable-dev-shm-usage")
 driver = webdriver.Chrome(options=options)
 wait = WebDriverWait(driver, 40)
 
-def js_click(element):
-    driver.execute_script("arguments[0].click();", element)
 
+def js_click(el):
+    driver.execute_script("arguments[0].click();", el)
+
+
+# ---------------- LOGIN ----------------
 try:
-    # ---------------- LOGIN ----------------
     driver.get(JUMPREE_URL)
+    time.sleep(5)
 
-    wait.until(EC.presence_of_element_located((By.ID, "email"))).send_keys(USERNAME)
-    driver.find_element(By.ID, "password").send_keys(PASSWORD)
-    driver.find_element(By.XPATH, "//button[contains(text(),'Login')]").click()
+    # Switch iframe if exists
+    iframes = driver.find_elements(By.TAG_NAME, "iframe")
+    if iframes:
+        print("🔁 Switching iframe")
+        driver.switch_to.frame(iframes[0])
+
+    # Username
+    user = wait.until(EC.presence_of_element_located((
+        By.XPATH, "//input[contains(@type,'email') or contains(@placeholder,'Email')]"
+    )))
+    user.send_keys(USERNAME)
+
+    # Password
+    pwd = wait.until(EC.presence_of_element_located((
+        By.XPATH, "//input[contains(@type,'password')]"
+    )))
+    pwd.send_keys(PASSWORD)
+
+    # Login button
+    login_btn = wait.until(EC.element_to_be_clickable((
+        By.XPATH, "//button[contains(text(),'Login') or contains(text(),'Sign')]"
+    )))
+    js_click(login_btn)
+
+    driver.switch_to.default_content()
 
     wait.until(EC.presence_of_element_located((By.ID, "integration_link")))
     print("✅ Logged in")
 
-    # -------- GO TO BOOKING PAGE ----------
+except Exception as e:
+    print("❌ Login failed:", e)
+    raise
+
+
+# ---------------- BOOKING ----------------
+try:
     amenity = wait.until(
         EC.presence_of_element_located((By.ID, "amenity_booking"))
     )
@@ -63,12 +93,12 @@ try:
     try:
         amenity.click()
     except:
-        print("⚠ Normal click failed, using JS click")
+        print("⚠ Overlay click issue – using JS")
         js_click(amenity)
 
     print("➡ Opened booking page")
 
-    # ---------- SELECT DATE --------------
+    # Date
     date_input = wait.until(
         EC.presence_of_element_located((By.XPATH, "//input[@placeholder='Select Date']"))
     )
@@ -76,7 +106,7 @@ try:
     date_input.send_keys(BOOK_DATE)
     time.sleep(2)
 
-    # ---------- SELECT LEVEL -------------
+    # Level
     level_dd = wait.until(
         EC.element_to_be_clickable((By.XPATH, "//mat-select[@formcontrolname='floor']"))
     )
@@ -86,7 +116,7 @@ try:
         EC.element_to_be_clickable((By.XPATH, f"//span[contains(text(),'{LEVEL}')]"))
     ).click()
 
-    # ---------- SELECT DESK --------------
+    # Desk
     desk_dd = wait.until(
         EC.element_to_be_clickable((By.XPATH, "//mat-select[@formcontrolname='seat']"))
     )
@@ -96,7 +126,7 @@ try:
         EC.element_to_be_clickable((By.XPATH, f"//span[contains(text(),'{DESK}')]"))
     ).click()
 
-    # ---------- SUBMIT -------------------
+    # Book
     book_btn = wait.until(
         EC.element_to_be_clickable((By.XPATH, "//button[contains(text(),'Book')]"))
     )
