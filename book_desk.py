@@ -8,21 +8,16 @@ from datetime import datetime, timedelta
 import time
 import os
 
-# ---------- CONFIG ----------
-URL = "https://jumpree.smartenspaces.com"
-
-EMAIL = os.getenv("JUMPREE_EMAIL")
+# -------- LOAD FROM SECRETS ----------
+URL = os.getenv("JUMPREE_URL")
+USERNAME = os.getenv("JUMPREE_USERNAME")
 PASSWORD = os.getenv("JUMPREE_PASSWORD")
-
-HEADLESS = True
-# ----------------------------
+LEVEL = os.getenv("JUMPREE_LEVEL")
+LOCATION = os.getenv("JUMPREE_LOCATION")
+# ------------------------------------
 
 options = webdriver.ChromeOptions()
-
-if HEADLESS:
-    options.add_argument("--headless")
-    options.add_argument("--disable-gpu")
-
+options.add_argument("--headless")
 options.add_argument("--window-size=1920,1080")
 
 driver = webdriver.Chrome(
@@ -33,18 +28,18 @@ driver = webdriver.Chrome(
 wait = WebDriverWait(driver, 30)
 
 try:
-    print("🚀 Starting Jumpree booking")
+    print("🚀 Jumpree booking started")
 
     driver.get(URL)
 
-    # Email
-    wait.until(EC.presence_of_element_located((By.ID, "email"))).send_keys(EMAIL)
+    # Username
+    wait.until(EC.presence_of_element_located((By.ID, "email"))).send_keys(USERNAME)
     driver.find_element(By.ID, "submit_btn").click()
 
     # Password
     wait.until(EC.presence_of_element_located((By.ID, "password"))).send_keys(PASSWORD)
 
-    # Accept terms
+    # Accept Terms
     terms = wait.until(EC.element_to_be_clickable((By.ID, "acceptTerms-input")))
     if not terms.is_selected():
         terms.click()
@@ -64,7 +59,7 @@ try:
     # ---------- DATE LOGIC ----------
     target = datetime.today() + timedelta(days=4)
     day = target.day
-    print("📅 Booking for:", target.strftime("%d-%m-%Y"))
+    print("📅 Booking date:", target.strftime("%d-%m-%Y"))
 
     date_xpath = f"//td//div[text()='{day}']"
     wait.until(EC.element_to_be_clickable((By.XPATH, date_xpath))).click()
@@ -75,26 +70,29 @@ try:
 
     # Location
     wait.until(EC.element_to_be_clickable(
-        (By.XPATH, "//p[contains(text(),'ONE@CHANGI CITY')]"))
+        (By.XPATH, f"//p[contains(text(),'{LOCATION}')]"))
     ).click()
 
-    # Floor
-    driver.find_element(By.XPATH, "//p[contains(text(),'Level 06')]").click()
-
-    # Desk
+    # Level
     wait.until(EC.element_to_be_clickable(
-        (By.XPATH, "//img[contains(@class,'leaflet-marker-icon')]"))
+        (By.XPATH, f"//p[contains(text(),'{LEVEL}')]"))
     ).click()
+
+    # Desk (first available)
+    desk = wait.until(EC.element_to_be_clickable(
+        (By.XPATH, "//img[contains(@class,'leaflet-marker-icon')]"))
+    )
+    desk.click()
 
     # Book
     wait.until(EC.element_to_be_clickable(
         (By.ID, "save_booking"))
     ).click()
 
-    print("✅ Booking SUCCESS")
+    print("✅ Desk booked successfully!")
 
 except Exception as e:
-    print("❌ FAILED:", e)
+    print("❌ Booking failed:", e)
     raise
 
 finally:
