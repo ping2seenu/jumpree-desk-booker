@@ -8,14 +8,28 @@ from datetime import datetime, timedelta
 import time
 import os
 
-# -------- LOAD FROM SECRETS ----------
-URL = os.getenv("JUMPREE_URL")
+# ================= HARDCODE CONFIG =================
+
+JUMPREE_URL = "https://juliusbaer.smartenspaces.com"
+LOCATION = "ONE@CHANGI CITY"
+LEVEL = "Level 06"
+
+# Optional: desk number (None = first available)
+DESK_NUMBER = "06-177"   # Example: "D-12"
+
+# ====================================================
+
+# Secrets
 USERNAME = os.getenv("JUMPREE_USERNAME")
 PASSWORD = os.getenv("JUMPREE_PASSWORD")
-LEVEL = os.getenv("JUMPREE_LEVEL")
-LOCATION = os.getenv("JUMPREE_LOCATION")
-# ------------------------------------
 
+# Validate secrets
+if not USERNAME:
+    raise Exception("❌ JUMPREE_USERNAME secret missing")
+if not PASSWORD:
+    raise Exception("❌ JUMPREE_PASSWORD secret missing")
+
+# Browser
 options = webdriver.ChromeOptions()
 options.add_argument("--headless")
 options.add_argument("--window-size=1920,1080")
@@ -28,26 +42,23 @@ driver = webdriver.Chrome(
 wait = WebDriverWait(driver, 30)
 
 try:
-    print("🚀 Jumpree booking started")
+    print("🚀 Jumpree automation started")
 
-    driver.get(URL)
+    driver.get(JUMPREE_URL)
 
-    # Username
+    # ---------------- LOGIN ----------------
     wait.until(EC.presence_of_element_located((By.ID, "email"))).send_keys(USERNAME)
     driver.find_element(By.ID, "submit_btn").click()
 
-    # Password
     wait.until(EC.presence_of_element_located((By.ID, "password"))).send_keys(PASSWORD)
 
-    # Accept Terms
     terms = wait.until(EC.element_to_be_clickable((By.ID, "acceptTerms-input")))
     if not terms.is_selected():
         terms.click()
 
-    # Login
     driver.find_element(By.ID, "submit_btn").click()
 
-    # Booking menu
+    # ---------------- BOOKING ----------------
     wait.until(EC.element_to_be_clickable((By.ID, "amenity_booking"))).click()
     wait.until(EC.element_to_be_clickable((By.ID, "book_now_amenity"))).click()
 
@@ -78,18 +89,24 @@ try:
         (By.XPATH, f"//p[contains(text(),'{LEVEL}')]"))
     ).click()
 
-    # Desk (first available)
-    desk = wait.until(EC.element_to_be_clickable(
-        (By.XPATH, "//img[contains(@class,'leaflet-marker-icon')]"))
-    )
-    desk.click()
+    # ---------------- DESK ----------------
+    if DESK_NUMBER:
+        print("🎯 Selecting desk:", DESK_NUMBER)
+        desk_xpath = f"//span[text()='{DESK_NUMBER}']/ancestor::div[contains(@class,'desk')]"
+        wait.until(EC.element_to_be_clickable((By.XPATH, desk_xpath))).click()
+    else:
+        print("🎯 Selecting first available desk")
+        desk = wait.until(EC.element_to_be_clickable(
+            (By.XPATH, "//img[contains(@class,'leaflet-marker-icon')]")
+        ))
+        desk.click()
 
-    # Book
+    # Final Book
     wait.until(EC.element_to_be_clickable(
         (By.ID, "save_booking"))
     ).click()
 
-    print("✅ Desk booked successfully!")
+    print("✅ DESK BOOKED SUCCESSFULLY!")
 
 except Exception as e:
     print("❌ Booking failed:", e)
