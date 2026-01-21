@@ -27,4 +27,4 @@ jobs:
           JUMPREE_EMAIL: ${{ secrets.JUMPREE_EMAIL }}
           JUMPREE_PASSWORD: ${{ secrets.JUMPREE_PASSWORD }}
         run: |
-          python jumpree_booking.py
+          python book_desk.py
