@@ -8,11 +8,11 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
-# ---------------- HARD CODE CONFIG ----------------
-JUMPREE_URL = "https://juliusbaer.smartenspaces.com"
-LEVEL = "Level 6"
-DESK = "L6-177"
-# --------------------------------------------------
+# ---------------- CONFIG ----------------
+JUMPREE_URL = "https://juliusbaer.smartenspaces.com"  # Hardcoded
+LEVEL = "Level 6"                                      # Hardcoded
+DESK = "L6-177"                                        # Hardcoded
+# ----------------------------------------
 
 USERNAME = os.getenv("JUMPREE_USERNAME")
 PASSWORD = os.getenv("JUMPREE_PASSWORD")
@@ -23,21 +23,20 @@ if not USERNAME:
 if not PASSWORD:
     raise Exception("❌ JUMPREE_PASSWORD secret missing")
 
-# Booking date = today + 4 days
 BOOK_DATE = (datetime.now() + timedelta(days=4)).strftime("%d/%m/%Y")
-
 print("🚀 Jumpree automation started")
 print("📅 Booking date:", BOOK_DATE)
 
+# ---------------- CHROME OPTIONS ----------------
 options = Options()
 options.add_argument("--headless")
 options.add_argument("--no-sandbox")
 options.add_argument("--disable-dev-shm-usage")
-
+options.add_argument("--disable-blink-features=AutomationControlled")
 driver = webdriver.Chrome(options=options)
-wait = WebDriverWait(driver, 40)
+wait = WebDriverWait(driver, 60)
 
-
+# ---------------- HELPER ----------------
 def js_click(el):
     driver.execute_script("arguments[0].click();", el)
 
@@ -45,57 +44,64 @@ def js_click(el):
 # ---------------- LOGIN ----------------
 try:
     driver.get(JUMPREE_URL)
-    time.sleep(5)
 
-    # Switch iframe if exists
+    # Wait until page fully loaded
+    WebDriverWait(driver, 60).until(
+        lambda d: d.execute_script("return document.readyState") == "complete"
+    )
+    time.sleep(3)
+
+    # Switch to iframe if exists
     iframes = driver.find_elements(By.TAG_NAME, "iframe")
     if iframes:
         print("🔁 Switching iframe")
         driver.switch_to.frame(iframes[0])
 
     # Username
-    user = wait.until(EC.presence_of_element_located((
-        By.XPATH, "//input[contains(@type,'email') or contains(@placeholder,'Email')]"
-    )))
-    user.send_keys(USERNAME)
+    user_input = wait.until(
+        EC.presence_of_element_located(
+            (By.XPATH, "//input[@type='email' or contains(@placeholder,'email')]")
+        )
+    )
+    user_input.send_keys(USERNAME)
 
     # Password
-    pwd = wait.until(EC.presence_of_element_located((
-        By.XPATH, "//input[contains(@type,'password')]"
-    )))
-    pwd.send_keys(PASSWORD)
+    pwd_input = wait.until(
+        EC.presence_of_element_located(
+            (By.XPATH, "//input[@type='password']")
+        )
+    )
+    pwd_input.send_keys(PASSWORD)
 
     # Login button
-    login_btn = wait.until(EC.element_to_be_clickable((
-        By.XPATH, "//button[contains(text(),'Login') or contains(text(),'Sign')]"
-    )))
+    login_btn = wait.until(
+        EC.element_to_be_clickable(
+            (By.XPATH, "//button[contains(text(),'Login') or contains(text(),'Sign')]")
+        )
+    )
     js_click(login_btn)
 
     driver.switch_to.default_content()
-
     wait.until(EC.presence_of_element_located((By.ID, "integration_link")))
     print("✅ Logged in")
 
 except Exception as e:
-    print("❌ Login failed:", e)
+    driver.save_screenshot("login_failed.png")
+    print("❌ Login failed, screenshot saved as login_failed.png")
     raise
 
 
-# ---------------- BOOKING ----------------
+# ---------------- BOOK DESK ----------------
 try:
-    amenity = wait.until(
-        EC.presence_of_element_located((By.ID, "amenity_booking"))
-    )
-
+    # Navigate to booking page
+    amenity = wait.until(EC.presence_of_element_located((By.ID, "amenity_booking")))
     driver.execute_script("arguments[0].scrollIntoView(true);", amenity)
     time.sleep(2)
 
     try:
         amenity.click()
     except:
-        print("⚠ Overlay click issue – using JS")
         js_click(amenity)
-
     print("➡ Opened booking page")
 
     # Date
@@ -104,14 +110,13 @@ try:
     )
     date_input.clear()
     date_input.send_keys(BOOK_DATE)
-    time.sleep(2)
+    time.sleep(1)
 
     # Level
     level_dd = wait.until(
         EC.element_to_be_clickable((By.XPATH, "//mat-select[@formcontrolname='floor']"))
     )
     js_click(level_dd)
-
     wait.until(
         EC.element_to_be_clickable((By.XPATH, f"//span[contains(text(),'{LEVEL}')]"))
     ).click()
@@ -121,7 +126,6 @@ try:
         EC.element_to_be_clickable((By.XPATH, "//mat-select[@formcontrolname='seat']"))
     )
     js_click(desk_dd)
-
     wait.until(
         EC.element_to_be_clickable((By.XPATH, f"//span[contains(text(),'{DESK}')]"))
     ).click()
@@ -132,12 +136,13 @@ try:
     )
     js_click(book_btn)
 
-    print("🎉 Desk booked successfully")
+    print("🎉 Desk booked successfully!")
 
 except Exception as e:
-    print("❌ Booking failed:", e)
+    driver.save_screenshot("booking_failed.png")
+    print("❌ Booking failed, screenshot saved as booking_failed.png")
     raise
 
 finally:
-    time.sleep(5)
+    time.sleep(3)
     driver.quit()
